@@ -62,6 +62,8 @@ library('tidyverse')
 library('dplyr')
 library('readr')
 library('rsample')
+library('vtable')
+library('randomForest')
 # note, do not run install.packages() inside a code chunk. install them in the console outside of a code chunk. 
 
 ```
@@ -91,6 +93,14 @@ colSums(is.na(songs))
 songs_clean <- na.omit(songs)
 
 colSums(is.na(songs_clean))
+
+songs_clean <- songs_clean %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -session_position, -session_length, -context_switch, -no_pause_before_play, -short_pause_before_play, -long_pause_before_play, -hist_user_behavior_n_seekfwd, -hist_user_behavior_n_seekback, -hist_user_behavior_is_shuffle, -hour_of_day, -premium, -context_type, -hist_user_behavior_reason_start, -hist_user_behavior_reason_end, -release_year)
+
+```
+
+```{r}
+
+st(songs_clean)
 
 ```
 
@@ -165,6 +175,31 @@ print(rf_fit_songs)
 ```{r}
 
 plot(rf_fit_songs)
+
+```
+
+
+```{r}
+
+count(songs_clean, mode)
+
+
+bar_data <- songs_clean %>% group_by(mode) %>% 
+  count(counted_stream)
+
+print(bar_data)
+
+
+
+ggplot(songs_clean, aes(x = counted_stream, y = danceability, fill = counted_stream)) + geom_boxplot()
+
+
+
+ggplot(songs_clean, aes(x = tempo, y = us_popularity_estimate)) + geom_point() + facet_wrap(~mode) + theme_minimal()
+
+ggplot(bar_data, aes(x = mode, y = n, fill = mode)) + geom_bar(stat = "identity") + facet_wrap(~counted_stream) + theme_bw()
+
+
 
 ```
 
