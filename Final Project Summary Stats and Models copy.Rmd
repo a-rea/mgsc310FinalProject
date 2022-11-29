@@ -94,7 +94,6 @@ songs_clean <- na.omit(songs)
 
 colSums(is.na(songs_clean))
 
-songs_clean <- songs_clean %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -session_position, -session_length, -context_switch, -no_pause_before_play, -short_pause_before_play, -long_pause_before_play, -hist_user_behavior_n_seekfwd, -hist_user_behavior_n_seekback, -hist_user_behavior_is_shuffle, -hour_of_day, -premium, -context_type, -hist_user_behavior_reason_start, -hist_user_behavior_reason_end, -release_year)
 
 ```
 
@@ -116,6 +115,8 @@ songs_clean <- songs_clean %>%
           skip_3 = ifelse(skip_3 == "TRUE", 1,0),
           not_skipped = ifelse(not_skipped == "TRUE", 1,0))
 
+
+
 ```
 
 ```{r}
@@ -124,16 +125,12 @@ songs_clean <- songs_clean %>%
 
 songs_clean$counted_stream <- ifelse((songs_clean$skip_2 == 1 | songs_clean$skip_3 == 1 | songs_clean$not_skipped == 1), 1, 0)
 
+songs_clean <- songs_clean %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -session_position, -session_length, -context_switch, -no_pause_before_play, -short_pause_before_play, -long_pause_before_play, -hist_user_behavior_n_seekfwd, -hist_user_behavior_n_seekback, -hist_user_behavior_is_shuffle, -hour_of_day, -premium, -context_type, -hist_user_behavior_reason_start, -hist_user_behavior_reason_end, -release_year)
 
 songs_clean <- songs_clean %>% 
   mutate(counted_stream = as_factor(counted_stream),
          mode = as_factor(mode),
          time_signature = as_factor(time_signature),
-         hist_user_behavior_is_shuffle = as_factor(hist_user_behavior_is_shuffle),
-         premium = as_factor(premium),
-         context_type = as_factor(context_type),
-         hist_user_behavior_reason_start = as_factor(hist_user_behavior_reason_start),
-         hist_user_behavior_reason_end = as_factor(hist_user_behavior_reason_end)
          )
 
 
