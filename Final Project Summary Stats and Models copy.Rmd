@@ -64,6 +64,8 @@ library('readr')
 library('rsample')
 library('vtable')
 library('randomForest')
+library('xgboost')
+library('ROSE')
 # note, do not run install.packages() inside a code chunk. install them in the console outside of a code chunk. 
 
 ```
@@ -91,8 +93,6 @@ colSums(is.na(songs))
 
 #omitting any NA value rows just in case
 songs_clean <- na.omit(songs)
-
-colSums(is.na(songs_clean))
 
 
 ```
@@ -123,20 +123,46 @@ songs_clean <- songs_clean %>%
 
 #Since we only care if the song will be counted as a stream we made a new attribute that identifies that. A song will be a stream if it is played for 30 seconds, so if the song is briefly played and skipped, played for a while and skipped, or not skipped at all, it will count as a stream for the artist.
 
-songs_clean$counted_stream <- ifelse((songs_clean$skip_2 == 1 | songs_clean$skip_3 == 1 | songs_clean$not_skipped == 1), 1, 0)
+songs_clean$counted_stream <- ifelse((songs_clean$skip_3 == 1 | songs_clean$not_skipped == 1), 1, 0)
 
-songs_clean <- songs_clean %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -session_position, -session_length, -context_switch, -no_pause_before_play, -short_pause_before_play, -long_pause_before_play, -hist_user_behavior_n_seekfwd, -hist_user_behavior_n_seekback, -hist_user_behavior_is_shuffle, -hour_of_day, -premium, -context_type, -hist_user_behavior_reason_start, -hist_user_behavior_reason_end, -release_year)
 
-songs_clean <- songs_clean %>% 
+
+#THIS DATASET IS IF YOU WANT TO KEEP ALL THE USER BEHAVIOR VARIABLES
+songs_clean_complete <- songs_clean %>% 
   mutate(counted_stream = as_factor(counted_stream),
          mode = as_factor(mode),
          time_signature = as_factor(time_signature),
+         hist_user_behavior_is_shuffle = as_factor(hist_user_behavior_is_shuffle),
+         premium = as_factor(premium),
+         context_type = as_factor(context_type),
+         hist_user_behavior_reason_start = as_factor(hist_user_behavior_reason_start),
+         hist_user_behavior_reason_end = as_factor(hist_user_behavior_reason_end)
          )
 
+#FURTHER REMOVING UNNECESSARY VARIABLES FROM THE DATAFRAME THAT USES SONG AND USER BEHAVIOR
+songs_clean_complete <- songs_clean_complete %>% select(-acoustic_vector_0,-acoustic_vector_1,-acoustic_vector_2,-acoustic_vector_3,-acoustic_vector_4, -acoustic_vector_5, -acoustic_vector_6, -acoustic_vector_7, -track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -release_year)
 
-print(songs_clean)
 
-#creating our split
+#THIS DATASET IS IF YOU WANT TO REMOVE USER BEHAVIOR VARIABLES AND WANT TO KEEP ONLY SONG DATA
+songs_clean <- songs_clean %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -session_position, -session_length, -context_switch, -no_pause_before_play, -short_pause_before_play, -long_pause_before_play, -hist_user_behavior_n_seekfwd, -hist_user_behavior_n_seekback, -hist_user_behavior_is_shuffle, -hour_of_day, -premium, -context_type, -hist_user_behavior_reason_start, -hist_user_behavior_reason_end, -release_year)
+
+
+#FACTORING ALL THE NECESSARY VARIABLES FOR THE SONG ONLY DATA (DOES NOT INCLUDE USER BEHEVAIOR)
+songs_clean <- songs_clean %>%
+  mutate(counted_stream = as_factor(counted_stream),
+        mode = as_factor(mode),
+         time_signature = as_factor(time_signature),
+        )
+
+
+
+#SPLIT FOR THE DATAFRAME THAT INCLUDES SONGS AND USER BEHAVIOR VARIABLES
+songs_split_completeDF <- initial_split(songs_clean_complete, prop = 0.75) 
+
+songs_train_completeDF <- training(songs_split_completeDF)
+songs_test_completeDF <- testing(songs_split_completeDF)
+
+#SPLIT FOR THE DATAFRAME THAT ONLY USES SONG VARIABLES
 songs_split <- initial_split(songs_clean, prop = 0.75) 
 
 songs_train <- training(songs_split)
@@ -144,20 +170,83 @@ songs_test <- testing(songs_split)
 
 ```
 
+
+```{r}
+
+print(songs_train_completeDF)
+
+unique(songs_train_completeDF$hist_user_behavior_reason_start)
+
+unique(songs_train_completeDF$hist_user_behavior_reason_end)
+
+```
+
 etc...
+
+##ILLUSTRATES OUR CLASS IMBALANCE
+```{r}
+
+class(songs_train_completeDF$counted_stream)
+
+table(songs_test_completeDF$counted_stream)
+
+barplot(prop.table(table(songs_test_completeDF$counted_stream)),
+        col = rainbow(2),
+        main = "Counted Stream Distribution")
+
+
+```
+
+
+## undersampling the dataframe that uses song and user data
+```{r}
+
+over <- ovun.sample(counted_stream ~ . , data = songs_train, method = "over", N = 247104)$data
+table(over$counted_stream)
+
+```
+
+## undersampling the dataframe that only uses song data
+```{r}
+
+under <- ovun.sample(counted_stream ~ . , data = songs_train, method = "under", N = 4716)$data
+table(under$counted_stream)
+
+```
+
+## Both Oversampling and Undersampling using both song and user data
+```{r}
+
+both <- ovun.sample(counted_stream ~ . , data = songs_train, method = "both", N = 125910)$data
+table(both$counted_stream)
+
+```
+
+
 
 
 ## Question 2
 
-2a)my random forest
+my random forest that uses both user and song data WITH NO RESAMPLING
 
 ```{r}
 
-#fit the model on everything but this
 rf_fit_songs <- randomForest(counted_stream ~ .,
-                        data = songs_train %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped),
-                        mtry = 6,
-                        ntree = 100,
+                        data = songs_train_completeDF,
+                        na.action = na.roughfix,
+                        importance = TRUE)
+
+print(rf_fit_completeDF)
+
+```
+
+my random forest that uses ONLY song data WITH NO RESAMPLING
+
+```{r}
+
+
+rf_fit_songs <- randomForest(counted_stream ~ .,
+                        data = songs_train,
                         na.action = na.roughfix,
                         importance = TRUE)
 
@@ -166,12 +255,116 @@ print(rf_fit_songs)
 ```
 
 
+random forest using only the music related data
+```{r}
+
+rf_fit_only_songs <- randomForest(counted_stream ~ .,
+                        data = songs_train,
+                        na.action = na.roughfix,
+                        importance = TRUE)
+
+
+
+```
+
+
+Random forest that uses user and song data USING OVERSAMPLING
+```{r}
+
+rf_fit_overSample <- randomForest(counted_stream ~ .,
+                        data = over,
+                        na.action = na.roughfix,
+                        importance = TRUE)
+
+print(rf_fit_overSample)
+
+```
+
+
+Random forest that uses only song data USING UNDERSAMPLING
+```{r}
+
+rf_fit_underSample <- randomForest(counted_stream ~ .,
+                        data = under,
+                        na.action = na.roughfix,
+                        importance = TRUE)
+
+print(rf_fit_underSample)
+
+```
+Random forest that uses user and song data USING BOTH OVERSAMPLING AND UNDERSAMPLING
+```{r}
+
+rf_fit_both <- randomForest(counted_stream ~ .,
+                        data = both,
+                        na.action = na.roughfix,
+                        importance = TRUE)
+
+print(rf_fit_both)
+
+```
+
+```{r}
+print(rf_fit_only_songs)
+
+```
+
 2b) Response to part b. 
+
+```{r}
+
+print(rf_fit_songs)
+
+
+```
+
+```{r}
+
+table(over$counted_stream)
+
+table(songs_train$counted_stream)
+
+table(songs_train_completeDF$counted_stream)
+
+
+table(songs_clean_complete$counted_stream)
+
+```
+
+```{r}
+
+
+#confusionMatrix(predict(rf_fit_overSample, songs_test_completeDF), songs_test_completeDF$counted_stream)
+
+#confusionMatrix(predict(rf_fit_songs, songs_test_completeDF), songs_test_completeDF$counted_stream)
+
+confusionMatrix(predict(rf_fit_underSample, songs_test), songs_test$counted_stream)
+
+#confusionMatrix(predict(rf_fit_both, songs_test_completeDF), songs_test_completeDF$counted_stream)
+
+
+```
+
+
 
 
 ```{r}
 
-plot(rf_fit_songs)
+plot(rf_fit_underSample)
+
+```
+
+```{r}
+
+importance_plot = varImpPlot(rf_fit_underSample, type = 1, scale = FALSE)
+
+```
+
+```{r, catch = TRUE}
+library('randomForestExplainer')
+
+plot_min_depth_distribution(rf_fit_underSample)
+
 
 ```
 
@@ -197,6 +390,14 @@ ggplot(songs_clean, aes(x = tempo, y = us_popularity_estimate)) + geom_point() +
 ggplot(bar_data, aes(x = mode, y = n, fill = mode)) + geom_bar(stat = "identity") + facet_wrap(~counted_stream) + theme_bw()
 
 
+
+```
+
+## resampling to combat class imbalance
+```{r}
+library('caret')
+
+confusionMatrix(predict(rf_fit_songs, songs_test_completeDF), songs_test_completeDF$counted_stream)
 
 ```
 
