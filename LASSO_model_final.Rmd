@@ -57,8 +57,8 @@ library('ROSE')
 
 ## Data Cleaning
 ```{r}
-track_features <- read_csv("MGSC310/datasets/tf_mini.csv")
-session_logs <- read_csv("MGSC310/datasets/log_mini.csv")
+track_features <- read_csv("datasets/tf_mini.csv")
+session_logs <- read_csv("datasets/log_mini.csv")
 
 #renaming track_id to link to track_features dataset
 names(session_logs)[names(session_logs) == "track_id_clean"] <- "track_id"
