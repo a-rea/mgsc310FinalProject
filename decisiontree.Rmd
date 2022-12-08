@@ -1,6 +1,6 @@
 ---
 title: "MGSC310 Final"
-author: "Alejandro Rea"
+author: "Karla Carmona"
 subtitle: Final Project using Spotify Data to see What Influences Song Skipability
 output:
   html_document:
