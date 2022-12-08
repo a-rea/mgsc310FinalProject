@@ -1,0 +1,247 @@
+---
+title: "Final_Project"
+output:
+  html_document: default
+  pdf_document: default
+date: "2022-11-23"
+---
+
+```{r setup, include=FALSE}
+
+# Please leave this code chunk as is. It makes some slight formatting changes to alter the output to be more aesthetically pleasing. 
+
+library(knitr)
+
+# Change the number in set seed to your own favorite number
+set.seed(1818)
+options(width=70)
+options(scipen=99)
+
+
+# this sets text outputted in code chunks to small
+opts_chunk$set(tidy.opts=list(width.wrap=50),tidy=TRUE, size = "vsmall")  
+opts_chunk$set(message = FALSE,                                          
+               warning = FALSE,
+               # "caching" stores objects in code chunks and only rewrites if you change things
+               cache = FALSE,                               
+               # automatically downloads dependency files
+               autodep = TRUE,
+               # 
+               cache.comments = FALSE,
+               # 
+               collapse = TRUE,
+               # change fig.width and fig.height to change the code height and width by default
+               fig.width = 5.5,  
+               fig.height = 4.5,
+               fig.align='center')
+
+
+```
+
+```{r setup-2}
+
+# Always print this out before your assignment
+sessionInfo()
+getwd()
+
+```
+
+
+<!-- ### start answering your problem set here -->
+<!-- You may export your homework in either html or pdf, with the former usually being easier. 
+     To export or compile your Rmd file: click above on 'Knit' then 'Knit to HTML' -->
+<!-- Be sure to submit both your .Rmd file and the compiled .html or .pdf file for full credit -->
+
+
+```{r setup-3}
+
+# load all your libraries in this chunk 
+library('tidyverse')
+library('dplyr')
+library('readr')
+library('rsample')
+library('ISLR')
+library('elasticnet')
+library('plotROC')
+library("purrr")
+library('ROSE')
+# note, do not run install.packages() inside a code chunk. install them in the console outside of a code chunk. 
+
+```
+
+
+## Question 1
+
+1a) Text response to part a. 
+
+```{r}
+
+track_features <- read_csv("datasets/tf_mini.csv")
+session_logs <- read_csv("datasets/log_mini.csv")
+
+#renaming track_id to link to track_features dataset
+names(session_logs)[names(session_logs) == "track_id_clean"] <- "track_id"
+
+
+#track and session data together
+songs <- merge(track_features, session_logs, by="track_id")
+
+#checking for missing data - no null data
+colSums(is.na(songs))
+
+#omitting any NA value rows just in case
+songs_clean <- na.omit(songs)
+
+
+
+
+```
+
+
+1b) Response to part b. 
+
+```{r}
+
+#turning our variables into yes or no in a binary fashion. We could just factor if you fancy that but
+songs_clean <- songs_clean %>% 
+  mutate(skip_1 = ifelse(skip_1 == "TRUE", 1,0),
+          skip_2 = ifelse(skip_2 == "TRUE", 1,0),
+          skip_3 = ifelse(skip_3 == "TRUE", 1,0),
+          not_skipped = ifelse(not_skipped == "TRUE", 1,0))
+
+
+
+```
+
+```{r}
+
+#Since we only care if the song will be counted as a stream we made a new attribute that identifies that. A song will be a stream if it is played for 30 seconds, so if the song is briefly played and skipped, played for a while and skipped, or not skipped at all, it will count as a stream for the artist.
+
+songs_clean$counted_stream <- ifelse((songs_clean$skip_3 == 1 | songs_clean$not_skipped == 1), 1, 0)
+
+songs_clean <- songs_clean %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -session_position, -session_length, -context_switch, -no_pause_before_play, -short_pause_before_play, -long_pause_before_play, -hist_user_behavior_n_seekfwd, -hist_user_behavior_n_seekback, -hist_user_behavior_is_shuffle, -hour_of_day, -premium, -context_type, -hist_user_behavior_reason_start, -hist_user_behavior_reason_end, -release_year, -acoustic_vector_0,-acoustic_vector_1, -acoustic_vector_2, -acoustic_vector_3,-acoustic_vector_4, -acoustic_vector_5, -acoustic_vector_6, -acoustic_vector_7)
+
+songs_clean <- songs_clean %>% 
+  mutate(counted_stream = as_factor(counted_stream),
+         mode = as_factor(mode),
+         time_signature = as_factor(time_signature),
+         )
+
+
+
+
+
+```
+
+
+
+## undersampling the dataframe 
+```{r}
+songs_under <- ovun.sample(counted_stream ~ . , data = songs_clean, method = "under", N = 6292)$data
+table(songs_under$counted_stream)
+```
+
+```{r}
+#creating our split
+songs_split <- initial_split(songs_under, prop = 0.75) 
+
+songs_train <- training(songs_split)
+songs_test <- testing(songs_split)
+
+```
+
+```{r}
+#creating our split
+songs_split <- initial_split(songs_clean, prop = 0.75) 
+
+songs_train_clean <- training(songs_split)
+songs_test_clean <- testing(songs_split)
+
+```
+
+```{r}
+
+logit_mod <- glm(counted_stream ~ .,
+                  family = binomial,
+                  data = songs_train)
+summary(logit_mod)
+
+
+exp(logit_mod$coefficients)
+
+coef_plots <- c(1.86, 1.486, .419, .996, .238, 4.26, .948, .385, .942, .877, .604,
+                .174, 1.008, 1.291, .963, 1.01, .856, 1.312)
+logit_mod_clean <- glm(counted_stream ~ .,
+                  family = binomial,
+                  data = songs_train_clean)
+
+
+barplot(coef_plots, las=2, cex.names=.55, main = "Coefficient odds",
+ylab = "Odds", rot=50, col=rainbow(20), 
+names.arg = c("energry", "liveness", "organism", "duration", "bounciness", "flatness", "loudness","speechiness", "popularity_estimate","danceability", "instrumentalness","mechanism","tempo","acousticness","dyn_range_mean","key","modeminor","valence"))
+
+```
+
+```{r}
+
+ggplot()
+
+```
+
+```{r}
+scores <- predict(logit_mod,
+                  type = "response", newdata = songs_train)
+
+
+library('yardstick')
+
+results_train <- tibble(
+  'truth' = as.numeric(songs_train$counted_stream),
+  'class1' = scores,
+)
+
+
+plot_train <- ggplot(results_train, 
+            aes(m = class1, d = truth)) + 
+  geom_roc(labelsize = 3.5, 
+           cutoffs.at = 
+             c(0.99,0.9,0.7,0.5,0.3,0.1,0)) + theme_minimal(base_size = 10,) + ggtitle("Train ROC plot") +theme(plot.title = element_text(hjust = 0.5))
+
+plot(plot_train)
+
+calc_auc(plot_train)
+
+```
+
+
+```{r}
+scores2 <- predict(logit_mod,
+                  type = "response", newdata = songs_test)
+
+
+library('yardstick')
+
+results_test <- tibble(
+  'truth2' = as.numeric(songs_test$counted_stream),
+  'class2' = scores2,
+  
+)
+
+
+plot_test <- ggplot(results_test, 
+            aes(m = class2, d = truth2)) + 
+  geom_roc(labelsize = 3.5, 
+           cutoffs.at = 
+             c(0.99,0.9,0.7,0.5,0.3,0.1,0)) + theme_minimal(base_size = 10,) + ggtitle("Test ROC plot") +theme(plot.title = element_text(hjust = 0.5))
+
+print(plot_test)
+calc_auc(plot_test)
+
+```
+
+
+```{r}
+p<-ggplot(data=df, aes(x=dose, y=len)) +
+  geom_bar(stat="identity")
+```
+

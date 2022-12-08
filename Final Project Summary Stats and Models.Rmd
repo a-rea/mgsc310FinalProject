@@ -1,5 +1,5 @@
 ---
-title: "Lab Class 3"
+title: "Final Project MGSC 310"
 author: "Alejandro Rea"
 subtitle: Final Project using Spotify Data to see What Influences Song Skipability
 output:
@@ -89,7 +89,7 @@ names(session_logs)[names(session_logs) == "track_id_clean"] <- "track_id"
 songs <- merge(track_features, session_logs, by="track_id")
 
 #checking for missing data - no null data
-colSums(is.na(songs))
+#colSums(is.na(songs))
 
 #omitting any NA value rows just in case
 songs_clean <- na.omit(songs)
@@ -110,9 +110,7 @@ st(songs_clean)
 
 #turning our variables into yes or no in a binary fashion. We could just factor if you fancy that but
 songs_clean <- songs_clean %>% 
-  mutate(skip_1 = ifelse(skip_1 == "TRUE", 1,0),
-          skip_2 = ifelse(skip_2 == "TRUE", 1,0),
-          skip_3 = ifelse(skip_3 == "TRUE", 1,0),
+  mutate( skip_3 = ifelse(skip_3 == "TRUE", 1,0),
           not_skipped = ifelse(not_skipped == "TRUE", 1,0))
 
 
@@ -144,7 +142,7 @@ songs_clean_complete <- songs_clean_complete %>% select(-acoustic_vector_0,-acou
 
 
 #THIS DATASET IS IF YOU WANT TO REMOVE USER BEHAVIOR VARIABLES AND WANT TO KEEP ONLY SONG DATA
-songs_clean <- songs_clean %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -session_position, -session_length, -context_switch, -no_pause_before_play, -short_pause_before_play, -long_pause_before_play, -hist_user_behavior_n_seekfwd, -hist_user_behavior_n_seekback, -hist_user_behavior_is_shuffle, -hour_of_day, -premium, -context_type, -hist_user_behavior_reason_start, -hist_user_behavior_reason_end, -release_year)
+songs_clean <- songs_clean %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -session_position, -session_length, -context_switch, -no_pause_before_play, -short_pause_before_play, -long_pause_before_play, -hist_user_behavior_n_seekfwd, -hist_user_behavior_n_seekback, -hist_user_behavior_is_shuffle, -hour_of_day, -premium, -context_type, -hist_user_behavior_reason_start, -hist_user_behavior_reason_end, -release_year, -acoustic_vector_0,-acoustic_vector_1,-acoustic_vector_2,-acoustic_vector_3,-acoustic_vector_4, -acoustic_vector_5, -acoustic_vector_6, -acoustic_vector_7)
 
 
 #FACTORING ALL THE NECESSARY VARIABLES FOR THE SONG ONLY DATA (DOES NOT INCLUDE USER BEHEVAIOR)
@@ -156,17 +154,47 @@ songs_clean <- songs_clean %>%
 
 
 
-#SPLIT FOR THE DATAFRAME THAT INCLUDES SONGS AND USER BEHAVIOR VARIABLES
-songs_split_completeDF <- initial_split(songs_clean_complete, prop = 0.75) 
+```
 
-songs_train_completeDF <- training(songs_split_completeDF)
-songs_test_completeDF <- testing(songs_split_completeDF)
+## undersampling the dataframe that uses song and user data
+```{r}
+
+over <- ovun.sample(counted_stream ~ . , data = songs_train, method = "over", N = 247104)$data
+table(over$counted_stream)
+
+```
+
+## undersampling the dataframe that only uses song data
+```{r}
+
+under <- ovun.sample(counted_stream ~ . , data = songs_clean, method = "under", N = 6292)$data
+table(under$counted_stream)
+```
+
+## Both Oversampling and Undersampling using both song and user data
+```{r}
+
+both <- ovun.sample(counted_stream ~ . , data = songs_train, method = "both", N = 125910)$data
+table(both$counted_stream)
+
+```
+
+```{r}
+
+#SPLIT FOR THE DATAFRAME THAT INCLUDES SONGS AND USER BEHAVIOR VARIABLES
+songs_split_under <- initial_split(under, prop = 0.75) 
+
+songs_train_under <- training(songs_split_under)
+songs_test_under <- testing(songs_split_under)
 
 #SPLIT FOR THE DATAFRAME THAT ONLY USES SONG VARIABLES
 songs_split <- initial_split(songs_clean, prop = 0.75) 
 
 songs_train <- training(songs_split)
 songs_test <- testing(songs_split)
+
+
+
 
 ```
 
@@ -186,41 +214,16 @@ etc...
 ##ILLUSTRATES OUR CLASS IMBALANCE
 ```{r}
 
-class(songs_train_completeDF$counted_stream)
+class(songs_clean$counted_stream)
 
-table(songs_test_completeDF$counted_stream)
+# 
+# barplot(prop.table(table(under$counted_stream)),
+#         col = rainbow(2),
+#         main = "Counted Stream Distribution")
 
-barplot(prop.table(table(songs_test_completeDF$counted_stream)),
-        col = rainbow(2),
-        main = "Counted Stream Distribution")
-
-
+prop.table(table(songs_clean$counted_stream))
 ```
 
-
-## undersampling the dataframe that uses song and user data
-```{r}
-
-over <- ovun.sample(counted_stream ~ . , data = songs_train, method = "over", N = 247104)$data
-table(over$counted_stream)
-
-```
-
-## undersampling the dataframe that only uses song data
-```{r}
-
-under <- ovun.sample(counted_stream ~ . , data = songs_train, method = "under", N = 4716)$data
-table(under$counted_stream)
-
-```
-
-## Both Oversampling and Undersampling using both song and user data
-```{r}
-
-both <- ovun.sample(counted_stream ~ . , data = songs_train, method = "both", N = 125910)$data
-table(both$counted_stream)
-
-```
 
 
 
@@ -247,6 +250,8 @@ my random forest that uses ONLY song data WITH NO RESAMPLING
 
 rf_fit_songs <- randomForest(counted_stream ~ .,
                         data = songs_train,
+                        mtry = 11,
+                        ntree = 1500,
                         na.action = na.roughfix,
                         importance = TRUE)
 
@@ -267,6 +272,12 @@ rf_fit_only_songs <- randomForest(counted_stream ~ .,
 
 ```
 
+```{r}
+
+print(rf_fit_only_songs)
+
+```
+
 
 Random forest that uses user and song data USING OVERSAMPLING
 ```{r}
@@ -281,17 +292,59 @@ print(rf_fit_overSample)
 ```
 
 
+CROSS VALIDATING
+```{r}
+
+rf_modsLab <- list()
+oob_errLab <- NULL
+test_errLab <- NULL
+for(mtry in 1:25){
+  rf_fitLab <- randomForest(counted_stream ~ ., 
+                         data = songs_train_under,
+                         mtry = mtry,
+                         na.action = na.roughfix,
+                         ntree = 600)
+  oob_errLab[mtry] <- rf_fitLab$err.rate[600]
+  
+  cat(mtry," ")
+}
+```
+
+```{r}
+
+results_DF <- data.frame(mtry = 1:25, oob_errLab)
+ggplot(results_DF, aes(x = mtry, y = oob_errLab)) + geom_point() + theme_minimal()
+
+
+```
+
 Random forest that uses only song data USING UNDERSAMPLING
 ```{r}
 
 rf_fit_underSample <- randomForest(counted_stream ~ .,
-                        data = under,
+                        data = songs_train_under,
+                        mtry = 11,
+                        ntree = 1500,
                         na.action = na.roughfix,
                         importance = TRUE)
 
 print(rf_fit_underSample)
 
 ```
+Random forest that uses only song data USING UNDERSAMPLING
+```{r}
+
+rf_fit_underSampleTest <- randomForest(counted_stream ~ .,
+                        data = songs_test_under,
+                        mtry = 11,
+                        ntree = 3000,
+                        na.action = na.roughfix,
+                        importance = TRUE)
+
+print(rf_fit_underSampleTest)
+
+```
+
 Random forest that uses user and song data USING BOTH OVERSAMPLING AND UNDERSAMPLING
 ```{r}
 
@@ -336,11 +389,11 @@ table(songs_clean_complete$counted_stream)
 
 #confusionMatrix(predict(rf_fit_overSample, songs_test_completeDF), songs_test_completeDF$counted_stream)
 
-#confusionMatrix(predict(rf_fit_songs, songs_test_completeDF), songs_test_completeDF$counted_stream)
+#confusionMatrix(predict(rf_fit_songs, songs_test), songs_test$counted_stream, positive = '1')
 
-confusionMatrix(predict(rf_fit_underSample, songs_test), songs_test$counted_stream)
+confusionMatrix(predict(rf_fit_underSample, songs_test), songs_test$counted_stream, positive = '1')
 
-#confusionMatrix(predict(rf_fit_both, songs_test_completeDF), songs_test_completeDF$counted_stream)
+#confusionMatrix(predict(rf_fit_both, songs_test), songs_test$counted_stream)
 
 
 ```

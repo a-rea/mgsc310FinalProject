@@ -1,0 +1,202 @@
+---
+title: "MGSC310 Final"
+author: "Alejandro Rea"
+subtitle: Final Project using Spotify Data to see What Influences Song Skipability
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+---
+
+```{r setup, include=FALSE}
+# Please leave this code chunk as is. It makes some slight formatting changes to alter the output to be more aesthetically pleasing. 
+library(knitr)
+# Change the number in set seed to your own favorite number
+set.seed(1818)
+options(width=70)
+options(scipen=99)
+# this sets text outputted in code chunks to small
+opts_chunk$set(tidy.opts=list(width.wrap=50),tidy=TRUE, size = "vsmall")  
+opts_chunk$set(message = FALSE,                                          
+               warning = FALSE,
+               # "caching" stores objects in code chunks and only rewrites if you change things
+               cache = FALSE,                               
+               # automatically downloads dependency files
+               autodep = TRUE,
+               # 
+               cache.comments = FALSE,
+               # 
+               collapse = TRUE,
+               # change fig.width and fig.height to change the code height and width by default
+               fig.width = 5.5,  
+               fig.height = 4.5,
+               fig.align='center')
+```
+
+```{r setup-2}
+# Always print this out before your assignment
+sessionInfo()
+getwd()
+```
+
+```{r setup-3}
+# load all your libraries in this chunk 
+library('tidyverse')
+library('dplyr')
+library('readr')
+library('rsample')
+library('vtable')
+library('randomForest')
+library('xgboost')
+library('ROSE')
+library(partykit)
+library(tidyverse)
+library(PerformanceAnalytics)
+library(rpart)       
+library(rpart.plot)  
+# note, do not run install.packages() inside a code chunk. install them in the console outside of a code chunk. 
+```
+
+```{r}
+track_features <- read_csv("datasets/tf_mini.csv")
+session_logs <- read_csv("datasets/log_mini.csv")
+#renaming track_id to link to track_features dataset
+names(session_logs)[names(session_logs) == "track_id_clean"] <- "track_id"
+#track and session data together
+songs <- merge(track_features, session_logs, by="track_id")
+#checking for missing data - no null data
+colSums(is.na(songs))
+#omitting any NA value rows just in case
+songs_clean <- na.omit(songs)
+```
+
+```{r}
+#turning our variables into yes or no in a binary fashion. We could just factor if you fancy that but
+songs_clean <- songs_clean %>% 
+  mutate(skip_1 = ifelse(skip_1 == "TRUE", 1,0),
+          skip_2 = ifelse(skip_2 == "TRUE", 1,0),
+          skip_3 = ifelse(skip_3 == "TRUE", 1,0),
+          not_skipped = ifelse(not_skipped == "TRUE", 1,0))
+```
+
+```{r}
+#Since we only care if the song will be counted as a stream we made a new attribute that identifies that. A song will be a stream if it is played for 30 seconds, so if the song is briefly played and skipped, played for a while and skipped, or not skipped at all, it will count as a stream for the artist.
+songs_clean$counted_stream <- ifelse((songs_clean$skip_3 == 1 | songs_clean$not_skipped == 1), 1, 0)
+#THIS DATASET IS IF YOU WANT TO KEEP ALL THE USER BEHAVIOR VARIABLES
+songs_clean_complete <- songs_clean %>% 
+  mutate(counted_stream = as_factor(counted_stream),
+         mode = as_factor(mode),
+         time_signature = as_factor(time_signature),
+         hist_user_behavior_is_shuffle = as_factor(hist_user_behavior_is_shuffle),
+         premium = as_factor(premium),
+         context_type = as_factor(context_type),
+         hist_user_behavior_reason_start = as_factor(hist_user_behavior_reason_start),
+         hist_user_behavior_reason_end = as_factor(hist_user_behavior_reason_end)
+         )
+#FURTHER REMOVING UNNECESSARY VARIABLES FROM THE DATAFRAME THAT USES SONG AND USER BEHAVIOR
+songs_clean_complete <- songs_clean_complete %>% select(-acoustic_vector_0,-acoustic_vector_1,-acoustic_vector_2,-acoustic_vector_3,-acoustic_vector_4, -acoustic_vector_5, -acoustic_vector_6, -acoustic_vector_7, -track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -release_year)
+#THIS DATASET IS IF YOU WANT TO REMOVE USER BEHAVIOR VARIABLES AND WANT TO KEEP ONLY SONG DATA
+songs_clean <- songs_clean %>% select(-track_id, -session_id, -date, -skip_1, -skip_2, -skip_3, -not_skipped, -session_position, -session_length, -context_switch, -no_pause_before_play, -short_pause_before_play, -long_pause_before_play, -hist_user_behavior_n_seekfwd, -hist_user_behavior_n_seekback, -hist_user_behavior_is_shuffle, -hour_of_day, -premium, -context_type, -hist_user_behavior_reason_start, -hist_user_behavior_reason_end, -release_year, -acoustic_vector_0,-acoustic_vector_1,-acoustic_vector_2,-acoustic_vector_3,-acoustic_vector_4, -acoustic_vector_5, -acoustic_vector_6, -acoustic_vector_7)
+#FACTORING ALL THE NECESSARY VARIABLES FOR THE SONG ONLY DATA (DOES NOT INCLUDE USER BEHEVAIOR)
+songs_clean <- songs_clean %>%
+  mutate(counted_stream = as_factor(counted_stream),
+        mode = as_factor(mode),
+         time_signature = as_factor(time_signature),
+        )
+
+```
+
+
+## undersampling the dataframe that only uses song data
+```{r}
+under <- ovun.sample(counted_stream ~ . , data = songs_clean, method = "under", N = 6292)$data
+table(under$counted_stream)
+```
+
+
+```{r}
+#SPLIT FOR THE DATAFRAME THAT INCLUDES SONGS AND USER BEHAVIOR VARIABLES
+songs_split_completeDF <- initial_split(songs_clean_complete, prop = 0.75) 
+songs_train_completeDF <- training(songs_split_completeDF)
+songs_test_completeDF <- testing(songs_split_completeDF)
+#SPLIT FOR THE DATAFRAME THAT ONLY USES SONG VARIABLES
+songs_split <- initial_split(under, prop = 0.75) 
+songs_train <- training(songs_split)
+songs_test <- testing(songs_split)
+
+```
+
+
+## undersampling the dataframe that uses song and user data
+```{r}
+over <- ovun.sample(counted_stream ~ . , data = songs_train, method = "over", N = 247104)$data
+table(over$counted_stream)
+```
+
+
+
+## Both Oversampling and Undersampling using both song and user data
+```{r}
+both <- ovun.sample(counted_stream ~ . , data = songs_train, method = "both", N = 125910)$data
+table(both$counted_stream)
+```
+
+
+```{r}
+count(songs_clean, mode)
+bar_data <- songs_clean %>% group_by(mode) %>% 
+  count(counted_stream)
+print(bar_data)
+ggplot(songs_clean, aes(x = counted_stream, y = danceability, fill = counted_stream)) + geom_boxplot()
+ggplot(songs_clean, aes(x = tempo, y = us_popularity_estimate)) + geom_point() + facet_wrap(~mode) + theme_minimal()
+ggplot(bar_data, aes(x = mode, y = n, fill = mode)) + geom_bar(stat = "identity") + facet_wrap(~counted_stream) + theme_bw()
+```
+
+
+```{r}
+ggplot(filter(songs_clean, counted_stream == 1), aes(x = duration)) + geom_histogram(col = c("white"), fill = "#249E25") + theme_minimal() + xlim(0, 600) + ylab("Count") + xlab("Duration (in Seconds)") + ggtitle("Duration of Counted Streams")
+```
+
+### DECISION TREE FINAL MODEL
+
+```{r}
+# model
+tree <- ctree(counted_stream ~ .,
+              data = songs_train)
+
+plot(tree)
+```
+```{r}
+# test predictions
+library('caret')
+tree_predictions <- predict(tree, songs_test)
+confusionMatrix(predict(tree, songs_test), songs_test$counted_stream)
+```
+
+```{r}
+# train predictions
+tree_predictions <- predict(tree, songs_train)
+confusionMatrix(predict(tree, songs_train), songs_train$counted_stream)
+```
+
+```{r}
+# pruning the tree
+pruning_model <- rpart(counted_stream ~ .,
+              data = songs_train,
+              method = "class",control = list(cp = 0, minsplit = 10, maxdepth = 10))
+plotcp(pruning_model)
+print(pruning_model$cptable)
+```
+
+```{r}
+#pruned tree predictions
+pruned <- prune(mod_rpart, cp = 0.0038477982)
+pruned_tree_predictions <- predict(pruned, songs_test)
+p <- data.frame(counted_yes = pruned_tree_predictions[,1], 
+                counted_no = pruned_tree_predictions[,2]) 
+pruned_tree_preds <- data.frame(pred)
+pruned_tree_preds <- p %>%
+  mutate(pred = if_else(counted_yes > counted_no, 1, 0))
+pruned_preds <- factor(pruned_tree_preds$pred)
+confusionMatrix(pruned_preds, songs_test$counted_stream)
+```
