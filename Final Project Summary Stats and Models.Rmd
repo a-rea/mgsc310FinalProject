@@ -79,7 +79,7 @@ library('ROSE')
 ```{r}
 
 track_features <- read_csv("datasets/tf_mini.csv")
-session_logs <- read_csv("log_mini.csv")
+session_logs <- read_csv("datasets/log_mini.csv")
 
 #renaming track_id to link to track_features dataset
 names(session_logs)[names(session_logs) == "track_id_clean"] <- "track_id"
@@ -331,7 +331,7 @@ rf_fit_underSample <- randomForest(counted_stream ~ .,
 print(rf_fit_underSample)
 
 ```
-Random forest that uses only song data USING UNDERSAMPLING
+Random forest that uses only song data USING UNDERSAMPLING on TEST SET to see OOB vs TRAIN SET OOB
 ```{r}
 
 rf_fit_underSampleTest <- randomForest(counted_stream ~ .,
@@ -453,21 +453,6 @@ library('caret')
 confusionMatrix(predict(rf_fit_songs, songs_test_completeDF), songs_test_completeDF$counted_stream)
 
 ```
-
-
-## Question 3
-
-Here is only text for question 3. 
-
-If you want to add a hypertext link [you can do so](http://www.chapman.edu)
-
-- If you want to add bullets
-  - You
-  - Can 
-  - Do 
-  - It
-
-If you want to add an image [follow this guide](https://stackoverflow.com/questions/25166624/insert-picture-table-in-r-markdown)
 
 
 
